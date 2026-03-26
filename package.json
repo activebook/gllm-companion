@@ -1,0 +1,32 @@
+{
+  "name": "gllm-companion",
+  "displayName": "gllm-companion",
+  "publisher": "Activebook",
+  "description": "Native Diffing: Seamlessly view, modify, and accept code changes suggested by gllm directly within the editor.",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "18.x",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@vscode/vsce": "^3.7.1"
+  }
+}
