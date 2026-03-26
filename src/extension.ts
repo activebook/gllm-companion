@@ -75,6 +75,9 @@ async function showInlineDiff(filePath: string, newContent: string) {
         const success = await vscode.workspace.applyEdit(edit);
         if (!success) {
             vscode.window.showErrorMessage('gllm-companion failed to apply the edit.');
+        } else {
+            // Automatically pop open the "Compare with Saved" diff view!
+            await vscode.commands.executeCommand('workbench.files.action.compareWithSaved', uri);
         }
     } catch (err) {
         outputChannel.appendLine(`ERROR: Failed to show inline diff: ${err}`);
