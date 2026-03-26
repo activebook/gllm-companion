@@ -4,16 +4,24 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-const outputChannel = vscode.window.createOutputChannel('gllm-companion');
+interface GllmMessage {
+    action?: 'preview' | 'saved' | 'discard';
+    filePath: string;
+    newContent?: string;
+}
+
+var outputChannel: vscode.OutputChannel;
 
 // Define the socket path based on the OS.
 // On Windows, use named pipes. On Unix-like systems, use a file in tmp.
-const SOCKET_PATH = os.platform() === 'win32' 
+const SOCKET_PATH = os.platform() === 'win32'
     ? '\\\\.\\pipe\\gllm-companion'
     : path.join(os.tmpdir(), 'gllm-companion.sock');
 
 export function activate(context: vscode.ExtensionContext) {
-    outputChannel.appendLine('Extension "gllm-companion" is now active!');
+    const displayName = context.extension.packageJSON.displayName;
+    outputChannel = vscode.window.createOutputChannel(displayName);
+    outputChannel.appendLine('Extension "' + displayName + '" is now active!');
 
     // Clean up old socket if it exists (Unix-like systems)
     if (os.platform() !== 'win32' && fs.existsSync(SOCKET_PATH)) {
@@ -25,11 +33,43 @@ export function activate(context: vscode.ExtensionContext) {
         socket.on('data', chunk => data += chunk);
         socket.on('end', async () => {
             try {
-                const msg = JSON.parse(data);
-                if (msg && msg.filePath && typeof msg.newContent === 'string') {
-                    await showInlineDiff(msg.filePath, msg.newContent);
+                const msg = JSON.parse(data) as GllmMessage;
+                if (!msg || !msg.filePath) {
+                    outputChannel.appendLine('ERROR: Invalid message format received from gllm CLI. Missing filePath.');
+                    return;
+                }
+
+                const action = msg.action || 'preview';
+
+                if (action === 'preview') {
+                    if (typeof msg.newContent === 'string') {
+                        await showInlineDiff(msg.filePath, msg.newContent);
+                    } else {
+                        outputChannel.appendLine('ERROR: "preview" action requires newContent string.');
+                    }
+                } else if (action === 'saved' || action === 'discard') {
+                    const uri = vscode.Uri.file(msg.filePath);
+                    await vscode.window.showTextDocument(uri);
+                    await vscode.commands.executeCommand('workbench.action.files.revert');
+
+                    // Close any open diff tabs for this file
+                    const tabsToClose: vscode.Tab[] = [];
+                    for (const group of vscode.window.tabGroups.all) {
+                        for (const tab of group.tabs) {
+                            if (tab.input instanceof vscode.TabInputTextDiff) {
+                                if (tab.input.original.fsPath === uri.fsPath || tab.input.modified.fsPath === uri.fsPath) {
+                                    tabsToClose.push(tab);
+                                }
+                            }
+                        }
+                    }
+                    if (tabsToClose.length > 0) {
+                        await vscode.window.tabGroups.close(tabsToClose);
+                    }
+
+                    outputChannel.appendLine(`Action ${action} executed: Reverted buffer for ${msg.filePath} to sync with disk.`);
                 } else {
-                    outputChannel.appendLine('ERROR: Invalid message format received from gllm CLI.');
+                    outputChannel.appendLine(`ERROR: Unknown action type "${action}".`);
                 }
             } catch (err) {
                 outputChannel.appendLine(`ERROR: Error parsing JSON from gllm CLI: ${err}`);
@@ -49,12 +89,14 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showErrorMessage(`gllm-companion failed to start socket server: ${err.message}`);
     });
 
-    context.subscriptions.push({ dispose: () => {
-        server.close();
-        if (os.platform() !== 'win32' && fs.existsSync(SOCKET_PATH)) {
-            fs.unlinkSync(SOCKET_PATH);
+    context.subscriptions.push({
+        dispose: () => {
+            server.close();
+            if (os.platform() !== 'win32' && fs.existsSync(SOCKET_PATH)) {
+                fs.unlinkSync(SOCKET_PATH);
+            }
         }
-    }});
+    });
 }
 
 async function showInlineDiff(filePath: string, newContent: string) {
@@ -69,7 +111,7 @@ async function showInlineDiff(filePath: string, newContent: string) {
             doc.positionAt(doc.getText().length)
         );
         edit.replace(uri, fullRange, newContent);
-        
+
         // This applies the text change in the opened editor buffer but does not save to disk.
         // VS Code's native difference tracker will show the colored gutter decorations.
         const success = await vscode.workspace.applyEdit(edit);
