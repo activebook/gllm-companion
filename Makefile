@@ -1,4 +1,6 @@
-.PHONY: help package pack-patch pack-minor pack-major clean
+.PHONY: help package pack-patch pack-minor pack-major clean release
+
+VERSION := $(shell node -p "require('./package.json').version")
 
 .DEFAULT_GOAL := help
 
@@ -22,3 +24,7 @@ pack-minor: ## Bump minor version and package
 pack-major: ## Bump major version and package
 	npm version major
 	./node_modules/.bin/vsce package --out dist/
+
+release: ## Create a GitHub release based on package.json version
+	@echo "\033[36mCreating GitHub release v$(VERSION)...\033[0m"
+	gh release create v$(VERSION) --generate-notes
