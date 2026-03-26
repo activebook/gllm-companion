@@ -4,7 +4,7 @@
   "icon": "images/icon.png",
   "publisher": "Activebook",
   "description": "View and accept code changes suggested by gllm directly within VSCode — with native inline diffs.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "repository": {
     "type": "git",
     "url": "https://github.com/activebook/gllm-companion"
