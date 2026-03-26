@@ -4,6 +4,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+const outputChannel = vscode.window.createOutputChannel('gllm-companion');
+
 // Define the socket path based on the OS.
 // On Windows, use named pipes. On Unix-like systems, use a file in tmp.
 const SOCKET_PATH = os.platform() === 'win32' 
@@ -11,7 +13,7 @@ const SOCKET_PATH = os.platform() === 'win32'
     : path.join(os.tmpdir(), 'gllm-companion.sock');
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('Congratulations, your extension "gllm-companion" is now active!');
+    outputChannel.appendLine('Extension "gllm-companion" is now active!');
 
     // Clean up old socket if it exists (Unix-like systems)
     if (os.platform() !== 'win32' && fs.existsSync(SOCKET_PATH)) {
@@ -27,23 +29,23 @@ export function activate(context: vscode.ExtensionContext) {
                 if (msg && msg.filePath && typeof msg.newContent === 'string') {
                     await showInlineDiff(msg.filePath, msg.newContent);
                 } else {
-                    console.error('Invalid message format received from gllm CLI.');
+                    outputChannel.appendLine('ERROR: Invalid message format received from gllm CLI.');
                 }
             } catch (err) {
-                console.error('Error parsing JSON from gllm CLI:', err);
+                outputChannel.appendLine(`ERROR: Error parsing JSON from gllm CLI: ${err}`);
             }
         });
         socket.on('error', (err) => {
-            console.error('Socket error:', err);
+            outputChannel.appendLine(`ERROR: Socket error: ${err}`);
         });
     });
 
     server.listen(SOCKET_PATH, () => {
-        console.log(`gllm-companion listening on ${SOCKET_PATH}`);
+        outputChannel.appendLine(`Socket server started at ${SOCKET_PATH}`);
     });
 
     server.on('error', (err) => {
-        console.error('Server error:', err);
+        outputChannel.appendLine(`ERROR: Server error: ${err}`);
         vscode.window.showErrorMessage(`gllm-companion failed to start socket server: ${err.message}`);
     });
 
@@ -75,7 +77,7 @@ async function showInlineDiff(filePath: string, newContent: string) {
             vscode.window.showErrorMessage('gllm-companion failed to apply the edit.');
         }
     } catch (err) {
-        console.error('Failed to show inline diff:', err);
+        outputChannel.appendLine(`ERROR: Failed to show inline diff: ${err}`);
         vscode.window.showErrorMessage(`gllm-companion failed to open file to show diff.`);
     }
 }
