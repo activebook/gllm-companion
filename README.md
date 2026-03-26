@@ -1,54 +1,18 @@
-# gllm-companion
+# gllm Companion
 
 A VS Code extension that bridges the [gllm](https://github.com/Activebook/gllm) CLI tool with the editor, enabling native inline diffs for AI-suggested code changes.
 
-## How It Works
+## Features
 
-When `gllm` generates a code change, it sends the new file content over a local socket to this extension. The extension applies the change to the editor buffer (without saving to disk), letting VS Code's built-in diff tracker render colored gutter decorations — so you can review, accept, or discard the suggestion naturally.
-
-```
-gllm CLI  ──(IPC socket)──▶  gllm-companion  ──▶  VS Code inline diff
-```
+- Native inline diff view when gllm modifies files
+- Accept changes by saving, reject by undoing
 
 ## Requirements
 
-- VS Code `^1.85.0`
-- [gllm](https://github.com/Activebook/gllm) CLI installed
+To use this extension, you'll need:
 
-## Installation
-
-Install from the VS Code Marketplace or build from source:
-
-```bash
-npm install
-npm run compile
-```
-
-To package as a `.vsix`:
-
-```bash
-npx vsce package
-```
-
-Then install via **Extensions: Install from VSIX…** in the command palette.
-
-## IPC Protocol
-
-The extension listens on:
-
-| Platform | Socket path |
-|----------|-------------|
-| Unix/macOS | `$TMPDIR/gllm-companion.sock` |
-| Windows | `\\.\pipe\gllm-companion` |
-
-The `gllm` CLI sends a single JSON message per connection:
-
-```json
-{
-  "filePath": "/absolute/path/to/file.ts",
-  "newContent": "... full updated file content ..."
-}
-```
+- VS Code version 1.85.0 or newer
+- gllm (installed separately) running within the integrated terminal
 
 ## License
 

@@ -1,8 +1,8 @@
 {
   "name": "gllm-companion",
-  "displayName": "gllm-companion",
+  "displayName": "gllm Companion",
   "publisher": "Activebook",
-  "description": "Native Diffing: Seamlessly view, modify, and accept code changes suggested by gllm directly within the editor.",
+  "description": "View and accept code changes suggested by gllm directly within VSCode — with native inline diffs.",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.85.0"
@@ -24,9 +24,10 @@
   "devDependencies": {
     "@types/node": "18.x",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.7.1",
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@vscode/vsce": "^3.7.1"
+    
   }
 }
