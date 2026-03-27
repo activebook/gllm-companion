@@ -4,6 +4,22 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+function resolveFilePath(filePath: string): vscode.Uri {
+    if (path.isAbsolute(filePath)) {
+        return vscode.Uri.file(filePath);
+    }
+    
+    // If it's a relative path, resolve it against the first workspace folder
+    if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+        const workspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
+        const absolutePath = path.join(workspaceRoot, filePath);
+        return vscode.Uri.file(absolutePath);
+    }
+    
+    // Fallback if no workspace is open
+    return vscode.Uri.file(filePath);
+}
+
 interface GllmMessage {
     action?: 'preview' | 'saved' | 'discard';
     filePath: string;
@@ -43,12 +59,13 @@ export function activate(context: vscode.ExtensionContext) {
 
                 if (action === 'preview') {
                     if (typeof msg.newContent === 'string') {
-                        await showInlineDiff(msg.filePath, msg.newContent);
+                        const uri = resolveFilePath(msg.filePath);
+                        await showInlineDiff(uri, msg.newContent);
                     } else {
                         outputChannel.appendLine('ERROR: "preview" action requires newContent string.');
                     }
                 } else if (action === 'saved' || action === 'discard') {
-                    const uri = vscode.Uri.file(msg.filePath);
+                    const uri = resolveFilePath(msg.filePath);
                     await vscode.window.showTextDocument(uri);
                     await vscode.commands.executeCommand('workbench.action.files.revert');
 
@@ -99,9 +116,8 @@ export function activate(context: vscode.ExtensionContext) {
     });
 }
 
-async function showInlineDiff(filePath: string, newContent: string) {
+async function showInlineDiff(uri: vscode.Uri, newContent: string) {
     try {
-        const uri = vscode.Uri.file(filePath);
         const doc = await vscode.workspace.openTextDocument(uri);
         await vscode.window.showTextDocument(doc);
 
