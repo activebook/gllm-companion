@@ -1,12 +1,14 @@
 name: Package VSCode Extension
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  # Disabled to avoid redundant builds: pushing to main then creating a release
+  # would trigger the workflow twice. Only run on release creation now.
+  # push:
+  #   branches:
+  #     - main
+  # pull_request:
+  #   branches:
+  #     - main
   release:
     types:
       - created
