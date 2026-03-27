@@ -65,8 +65,9 @@ export function activate(context: vscode.ExtensionContext) {
                         outputChannel.appendLine('ERROR: "preview" action requires newContent string.');
                     }
                 } else if (action === 'saved' || action === 'discard') {
+                    const activeTerminal = vscode.window.activeTerminal;
                     const uri = resolveFilePath(msg.filePath);
-                    await vscode.window.showTextDocument(uri);
+                    await vscode.window.showTextDocument(uri, { preserveFocus: true, preview: true });
                     await vscode.commands.executeCommand('workbench.action.files.revert');
 
                     // Close any open diff tabs for this file
@@ -82,6 +83,10 @@ export function activate(context: vscode.ExtensionContext) {
                     }
                     if (tabsToClose.length > 0) {
                         await vscode.window.tabGroups.close(tabsToClose);
+                    }
+
+                    if (activeTerminal) {
+                        activeTerminal.show(false);
                     }
 
                     outputChannel.appendLine(`Action ${action} executed: Reverted buffer for ${msg.filePath} to sync with disk.`);
@@ -118,8 +123,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 async function showInlineDiff(uri: vscode.Uri, newContent: string) {
     try {
+        const activeTerminal = vscode.window.activeTerminal;
         const doc = await vscode.workspace.openTextDocument(uri);
-        await vscode.window.showTextDocument(doc);
+        await vscode.window.showTextDocument(doc, { preserveFocus: true, preview: true });
 
         const edit = new vscode.WorkspaceEdit();
         const fullRange = new vscode.Range(
@@ -136,6 +142,11 @@ async function showInlineDiff(uri: vscode.Uri, newContent: string) {
         } else {
             // Automatically pop open the "Compare with Saved" diff view!
             await vscode.commands.executeCommand('workbench.files.action.compareWithSaved', uri);
+            
+            // Bring focus back to the terminal if it was active
+            if (activeTerminal) {
+                activeTerminal.show(false);
+            }
         }
     } catch (err) {
         outputChannel.appendLine(`ERROR: Failed to show inline diff: ${err}`);

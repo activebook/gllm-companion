@@ -11,7 +11,14 @@ clean: ## Remove dist folder
 	rm -rf dist
 
 package: ## Package extension (no version bump)
+	@mkdir -p dist
 	./node_modules/.bin/vsce package --out dist/
+	@echo "\033[32m✔ Package created in dist/\033[0m"
+	@echo "\033[36mTip: To install locally, run: code --install-extension dist/activebook.gllm-companion-$(VERSION).vsix --force\033[0m"
+
+install: package ## Install the extension locally to VSCode
+	@echo "\033[36mInstalling extension v$(VERSION)...\033[0m"
+	code --install-extension dist/activebook.gllm-companion-$(VERSION).vsix --force
 
 pack-patch: ## Bump patch version and package
 	npm version patch
