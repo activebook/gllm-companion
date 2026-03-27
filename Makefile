@@ -26,5 +26,9 @@ pack-major: ## Bump major version and package
 	./node_modules/.bin/vsce package --out dist/
 
 release: ## Create a GitHub release based on package.json version
+	@echo "\033[36mEnsuring tag v$(VERSION) exists locally...\033[0m"
+	git tag v$(VERSION) || true
+	@echo "\033[36mPushing tag v$(VERSION) to remote...\033[0m"
+	git push origin v$(VERSION)
 	@echo "\033[36mCreating GitHub release v$(VERSION)...\033[0m"
 	gh release create v$(VERSION) --generate-notes
