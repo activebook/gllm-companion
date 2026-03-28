@@ -1,4 +1,10 @@
-.PHONY: help package pack-patch pack-minor pack-major clean release download install
+.PHONY: help package pack-patch pack-minor pack-major clean release download install publish-ovsx
+
+# Load environment variables from .env if it exists
+ifneq (,$(wildcard ./.env))
+    include .env
+    export
+endif
 
 VERSION := $(shell node -p "require('./package.json').version")
 VSIX_FILE := gllm-companion-$(VERSION).vsix
@@ -31,6 +37,11 @@ download: ## Download the vsix from GitHub releases to verify it exists
 	@echo "\033[36mDownloading $(VSIX_FILE)...\033[0m"
 	curl -L -f $(DOWNLOAD_URL) -o $(VSIX_PATH)
 	@echo "\033[32m✔ Downloaded to $(VSIX_PATH)\033[0m"
+
+publish-ovsx: package ## Publish to Open VSX (loads OVSX_TOKEN from .env)
+	@if [ -z "$(OVSX_TOKEN)" ]; then echo "\033[31m✘ OVSX_TOKEN is not set.\033[0m" && exit 1; fi
+	npx ovsx publish $(VSIX_PATH) -p $(OVSX_TOKEN)
+	@echo "\033[32m✔ Published to Open VSX\033[0m"
 
 pack-patch: ## Bump patch version and package
 	npm version patch

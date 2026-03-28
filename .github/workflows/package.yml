@@ -62,3 +62,7 @@ jobs:
           files: '*.vsix'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to Open VSX
+        if: github.event_name == 'release'
+        run: npx ovsx publish *.vsix -p ${{ secrets.OVSX_TOKEN }}
