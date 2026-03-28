@@ -38,8 +38,12 @@ jobs:
       - name: Build Extension
         run: npm run compile
 
+      - name: Get Version from package.json
+        id: get_version
+        run: echo "VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
       - name: Package Extension (VSIX)
-        run: npx vsce package
+        run: npx vsce package --out gllm-companion-${{ steps.get_version.outputs.VERSION }}.vsix
 
       - name: Verify VSIX File Exists
         run: ls -l *.vsix

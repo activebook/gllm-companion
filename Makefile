@@ -1,6 +1,9 @@
-.PHONY: help package pack-patch pack-minor pack-major clean release
+.PHONY: help package pack-patch pack-minor pack-major clean release download install
 
 VERSION := $(shell node -p "require('./package.json').version")
+VSIX_FILE := gllm-companion-$(VERSION).vsix
+VSIX_PATH := dist/$(VSIX_FILE)
+DOWNLOAD_URL := https://github.com/activebook/gllm-companion/releases/download/v$(VERSION)/$(VSIX_FILE)
 
 .DEFAULT_GOAL := help
 
@@ -12,25 +15,34 @@ clean: ## Remove dist folder
 
 package: ## Package extension (no version bump)
 	@mkdir -p dist
-	./node_modules/.bin/vsce package --out dist/
-	@echo "\033[32m✔ Package created in dist/\033[0m"
-	@echo "\033[36mTip: To install locally, run: code --install-extension dist/activebook.gllm-companion-$(VERSION).vsix --force\033[0m"
+	./node_modules/.bin/vsce package --out $(VSIX_PATH)
+	@echo "\033[32m✔ Package created: $(VSIX_PATH)\033[0m"
+	@echo "\033[36mTip: To install locally, run: make install\033[0m"
 
-install: package ## Install the extension locally to VSCode
-	@echo "\033[36mInstalling extension v$(VERSION)...\033[0m"
-	code --install-extension dist/activebook.gllm-companion-$(VERSION).vsix --force
+install: ## Install the extension locally to VSCode (requires local build)
+	@echo "\033[36mInstalling extension v$(VERSION) from $(VSIX_PATH)...\033[0m"
+	@if [ ! -f $(VSIX_PATH) ]; then $(MAKE) package; fi
+	code --install-extension $(VSIX_PATH) --force
+
+download: ## Download the vsix from GitHub releases to verify it exists
+	@echo "\033[36mChecking if v$(VERSION) is available on GitHub...\033[0m"
+	@mkdir -p dist
+	@curl -s -I -f $(DOWNLOAD_URL) > /dev/null || (echo "\033[31m✘ Release v$(VERSION) not found on GitHub yet.\033[0m" && exit 1)
+	@echo "\033[36mDownloading $(VSIX_FILE)...\033[0m"
+	curl -L -f $(DOWNLOAD_URL) -o $(VSIX_PATH)
+	@echo "\033[32m✔ Downloaded to $(VSIX_PATH)\033[0m"
 
 pack-patch: ## Bump patch version and package
 	npm version patch
-	./node_modules/.bin/vsce package --out dist/
+	$(MAKE) package
 
 pack-minor: ## Bump minor version and package
 	npm version minor
-	./node_modules/.bin/vsce package --out dist/
+	$(MAKE) package
 
 pack-major: ## Bump major version and package
 	npm version major
-	./node_modules/.bin/vsce package --out dist/
+	$(MAKE) package
 
 release: ## Create a GitHub release based on package.json version
 	@echo "\033[36mEnsuring tag v$(VERSION) exists locally...\033[0m"
