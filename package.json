@@ -4,7 +4,7 @@
   "icon": "images/icon.png",
   "publisher": "Activebook",
   "description": "Companion extension for gllm — brings AI-suggested code changes into VSCode as native inline diffs, and enriches gllm sessions with open editor context, cursor position, and selected text.",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "repository": {
     "type": "git",
     "url": "https://github.com/activebook/gllm-companion"

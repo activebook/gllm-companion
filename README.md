@@ -58,11 +58,18 @@ Please report bugs and feature requests on the [GitHub issue tracker](https://gi
 
 ## Release Notes
 
+### 0.0.6
+
+Bugfix
+
+- Fixed the bug in context JSON output.
+- Filters out empty selections.
+
 ### 0.0.5
 
-- Add `gllm: Run` command to initialize and show a gllm terminal session
-- Add status bar item to show gllm server status
-- Add context gathering for open files, cursor position, and selected text
+- Add `gllm: Run` command to initialize and show a gllm terminal session.
+- Add status bar item to show gllm server status.
+- Add context gathering for open files, cursor position, and selected text.
 
 ### 0.0.4
 
