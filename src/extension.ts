@@ -31,11 +31,11 @@ interface GllmContext {
     filePath: string;
     languageId: string;
     isDirty: boolean;
-    content: string;
+    // content: string;  // Omitted to reduce payload size, can be added if needed
     selections: {
       start: { line: number; character: number };
       end: { line: number; character: number };
-      text: string;
+      text: string;  // Should filter out empty selections in gatherContext to avoid noise, but included here for completeness
     }[];
     cursorPosition: { line: number; character: number };
     visibleRanges: {
@@ -43,7 +43,7 @@ interface GllmContext {
       end: { line: number; character: number };
     }[];
   } | null;
-  openFiles: {
+  otherOpenFiles: {
     filePath: string;
     isDirty: boolean;
   }[];
@@ -80,12 +80,14 @@ function gatherContext(): GllmContext {
       filePath: doc.uri.fsPath,
       languageId: doc.languageId,
       isDirty: doc.isDirty,
-      content: doc.getText(),
-      selections: activeTextEditor.selections.map(sel => ({
-        start: { line: sel.start.line, character: sel.start.character },
-        end: { line: sel.end.line, character: sel.end.character },
-        text: doc.getText(sel)
-      })),
+      // content: doc.getText(),
+      selections: activeTextEditor.selections
+        .filter(sel => !sel.isEmpty)
+        .map(sel => ({
+          start: { line: sel.start.line, character: sel.start.character },
+          end: { line: sel.end.line, character: sel.end.character },
+          text: doc.getText(sel)
+        })),
       cursorPosition: {
         line: activeTextEditor.selection.active.line,
         character: activeTextEditor.selection.active.character
@@ -101,7 +103,7 @@ function gatherContext(): GllmContext {
 
   return {
     activeEditor: activeEditorContext,
-    openFiles,
+    otherOpenFiles: openFiles,
     workspaceFolders
   };
 }
@@ -209,7 +211,7 @@ async function handleMessage(msg: GllmMessage, socket: net.Socket) {
   if (action === 'context') {
     try {
       const ctx = gatherContext();
-      socket.write(JSON.stringify(ctx) + '\\n');
+      socket.write(JSON.stringify(ctx));
       socket.end(); // Gracefully complete the transaction
       outputChannel.appendLine('Action context executed: Sent editor context to CLI.');
     } catch (err) {
