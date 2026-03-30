@@ -180,6 +180,25 @@ export function activate(context: vscode.ExtensionContext) {
       }
     }
   });
+
+  const runCommandDisposable = vscode.commands.registerCommand('gllm-companion.run', startGllmSession);
+  context.subscriptions.push(runCommandDisposable);
+}
+
+function startGllmSession() {
+  let terminal = vscode.window.terminals.find(t => t.name === 'gllm');
+  let isNew = false;
+  
+  if (!terminal) {
+    terminal = vscode.window.createTerminal('gllm');
+    isNew = true;
+  }
+  
+  terminal.show();
+  
+  if (isNew) {
+    terminal.sendText('gllm');
+  }
 }
 
 async function handleMessage(msg: GllmMessage, socket: net.Socket) {
