@@ -10,7 +10,7 @@ def test_sock(action="discard", content=None):
     
     file_path = os.path.abspath("test/test.js")
     with open(file_path, "w") as f:
-        f.write("const outputChannel = vscode.window.createOutputChannel('gllm-companion');\noutputChannel.appendLine('Socket server started at ' + SOCKET_PATH);\n")
+        f.write("const outputChannel = vscode.window.createOutputChannel('gllm-companion');\\noutputChannel.appendLine('Socket server started at ' + SOCKET_PATH);\\n")
     
     # Build message based on action type
     if action == "preview":
@@ -20,9 +20,11 @@ def test_sock(action="discard", content=None):
         msg = json.dumps({"action": "saved", "filePath": file_path})
     elif action == "discard":
         msg = json.dumps({"action": "discard", "filePath": file_path})
+    elif action == "context":
+        msg = json.dumps({"action": "context"})
     else:
         print(f"Unknown action: {action}")
-        print("Valid actions: preview, saved, discard")
+        print("Valid actions: preview, saved, discard, context")
         return
     
     print(f"Action: {action}")
@@ -33,6 +35,25 @@ def test_sock(action="discard", content=None):
             s.connect(sock_path)
             s.sendall(msg.encode('utf-8'))
             print("Sent successfully")
+            
+            if action == "context":
+                print("Waiting for response...")
+                s.shutdown(socket.SHUT_WR)
+                
+                response = b""
+                while True:
+                    data = s.recv(4096)
+                    if not data:
+                        break
+                    response += data
+                
+                print("\\n--- Response Received ---")
+                try:
+                    parsed = json.loads(response.decode('utf-8'))
+                    print(json.dumps(parsed, indent=2))
+                except json.JSONDecodeError:
+                    print("Raw Output:")
+                    print(response.decode('utf-8'))
     except Exception as e:
         print("Failed:", e)
 
@@ -45,17 +66,19 @@ Actions:
   preview    Send preview action with optional content
   saved      Send saved action
   discard    Send discard action
+  context    Request active editor contextual awareness
 
 Examples:
   %(prog)s preview                    # Preview with default content
   %(prog)s preview -c "console.log('test')"  # Preview with custom content
   %(prog)s saved                      # Send saved action
-  %(prog)s discard                    # Send discard action"""
+  %(prog)s discard                    # Send discard action
+  %(prog)s context                    # Request context payload"""
     )
     parser.add_argument(
         "action",
         nargs="?",
-        choices=["preview", "saved", "discard"],
+        choices=["preview", "saved", "discard", "context"],
         help="Action type to test"
     )
     parser.add_argument(

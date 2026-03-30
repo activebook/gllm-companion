@@ -8,3 +8,4 @@ dist/**
 tsconfig.json
 **/*.map
 **/*.ts
+.env
