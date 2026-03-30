@@ -9,3 +9,8 @@ tsconfig.json
 **/*.map
 **/*.ts
 .env
+Makefile
+.github/**
+package-lock.json
+.DS_Store
+temp/**
