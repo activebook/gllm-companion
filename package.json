@@ -4,7 +4,7 @@
   "icon": "images/icon.png",
   "publisher": "Activebook",
   "description": "Companion extension for gllm — brings AI-suggested code changes into VSCode as native inline diffs, and enriches gllm sessions with open editor context, cursor position, and selected text.",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "repository": {
     "type": "git",
     "url": "https://github.com/activebook/gllm-companion"
@@ -26,6 +26,46 @@
         "command": "gllm-companion.run",
         "title": "Run",
         "category": "gllm"
+      },
+      {
+        "command": "gllm-companion.diff.accept",
+        "title": "Accept Diff",
+        "category": "gllm",
+        "icon": "$(check)"
+      },
+      {
+        "command": "gllm-companion.diff.cancel",
+        "title": "Cancel Diff",
+        "category": "gllm",
+        "icon": "$(close)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "gllm-companion.diff.accept",
+          "group": "navigation",
+          "when": "isInDiffEditor && gllm.activeDiff"
+        },
+        {
+          "command": "gllm-companion.diff.cancel",
+          "group": "navigation",
+          "when": "isInDiffEditor && gllm.activeDiff"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "gllm-companion.diff.accept",
+        "key": "ctrl+s",
+        "mac": "cmd+s",
+        "when": "isInDiffEditor && gllm.activeDiff"
+      },
+      {
+        "command": "gllm-companion.diff.cancel",
+        "key": "escape",
+        "mac": "escape",
+        "when": "isInDiffEditor && gllm.activeDiff"
       }
     ]
   },
