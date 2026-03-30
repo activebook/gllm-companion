@@ -211,7 +211,7 @@ async function handleMessage(msg: GllmMessage, socket: net.Socket) {
   if (action === 'context') {
     try {
       const ctx = gatherContext();
-      socket.write(JSON.stringify(ctx));
+      socket.write(JSON.stringify(ctx)); // Send the context back to the CLI
       socket.end(); // Gracefully complete the transaction
       outputChannel.appendLine('Action context executed: Sent editor context to CLI.');
     } catch (err) {

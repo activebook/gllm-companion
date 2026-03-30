@@ -33,7 +33,7 @@ install: ## Install the extension locally to VSCode (requires local build)
 download: ## Download the vsix from GitHub releases to verify it exists
 	@echo "\033[36mChecking if v$(VERSION) is available on GitHub...\033[0m"
 	@mkdir -p dist
-	@curl -s -I -f $(DOWNLOAD_URL) > /dev/null || (echo "\033[31m✘ Release v$(VERSION) not found on GitHub yet.\033[0m" && exit 1)
+	@curl -s -I -f $(DOWNLOAD_URL) > /dev/null || (echo "\033[31m✘ Release v$(VERSION) not found on GitHub yet. Wait a few minutes for CI to finish.\033[0m" && exit 1)
 	@echo "\033[36mDownloading $(VSIX_FILE)...\033[0m"
 	curl -L -f $(DOWNLOAD_URL) -o $(VSIX_PATH)
 	@echo "\033[32m✔ Downloaded to $(VSIX_PATH)\033[0m"
