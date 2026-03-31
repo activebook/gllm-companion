@@ -4,6 +4,14 @@ import os
 import tempfile
 import argparse
 
+DEFAULT_JS_CONTENT = "const outputChannel = vscode.window.createOutputChannel('gllm-companion');\noutputChannel.appendLine('Socket server started at ' + SOCKET_PATH);\n"
+
+def prepare_test_file(file_path, content=DEFAULT_JS_CONTENT):
+    if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
+        return
+    with open(file_path, "w") as f:
+        f.write(content)
+
 def test_sock(action="diffRejected", content=None):
     sock_path = os.path.join(tempfile.gettempdir(), 'gllm-companion.sock')
     print("Socket path:", sock_path)
@@ -11,8 +19,7 @@ def test_sock(action="diffRejected", content=None):
     # Build message based on action type
     if action == "openDiff":
         file_path = os.path.abspath("test/test.js")
-        with open(file_path, "w") as f:
-            f.write("const outputChannel = vscode.window.createOutputChannel('gllm-companion');\\noutputChannel.appendLine('Socket server started at ' + SOCKET_PATH);\\n")
+        prepare_test_file(file_path)
         
         new_content = content if content else "console.log('Congratulations, your extension \"gllm-companion\" is now active!');"
         msg = json.dumps({"action": "openDiff", "filePath": file_path, "newContent": new_content})
