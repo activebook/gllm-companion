@@ -58,6 +58,13 @@ Please report bugs and feature requests on the [GitHub issue tracker](https://gi
 
 ## Release Notes
 
+### 0.0.7
+
+Improvement:
+
+Support bidirectional context changes between editor and gllm.
+You can confirm or discard changes in either of the editor or gllm.
+
 ### 0.0.6
 
 Bugfix

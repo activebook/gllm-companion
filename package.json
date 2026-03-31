@@ -45,12 +45,12 @@
         {
           "command": "gllm-companion.diff.accept",
           "group": "navigation",
-          "when": "isInDiffEditor && gllm.activeDiff"
+          "when": "isInDiffEditor && gllm-companion.activeDiff"
         },
         {
           "command": "gllm-companion.diff.cancel",
           "group": "navigation",
-          "when": "isInDiffEditor && gllm.activeDiff"
+          "when": "isInDiffEditor && gllm-companion.activeDiff"
         }
       ]
     },
@@ -59,13 +59,13 @@
         "command": "gllm-companion.diff.accept",
         "key": "ctrl+s",
         "mac": "cmd+s",
-        "when": "isInDiffEditor && gllm.activeDiff"
+        "when": "isInDiffEditor && gllm-companion.activeDiff"
       },
       {
         "command": "gllm-companion.diff.cancel",
         "key": "escape",
         "mac": "escape",
-        "when": "isInDiffEditor && gllm.activeDiff"
+        "when": "isInDiffEditor && gllm-companion.activeDiff"
       }
     ]
   },

@@ -15,6 +15,7 @@ const Actions = {
   DIFF_ACCEPTED: 'diffAccepted',
   DIFF_REJECTED: 'diffRejected',
   GET_CONTEXT: 'getContext',
+  SUBSCRIBE: 'subscribe',
 } as const;
 
 type Action = typeof Actions[keyof typeof Actions];
@@ -40,10 +41,6 @@ interface GllmContext {
       text: string;
     }[];
     cursorPosition: { line: number; character: number };
-    visibleRanges: {
-      start: { line: number; character: number };
-      end: { line: number; character: number };
-    }[];
   } | null;
   otherOpenFiles: { filePath: string; isDirty: boolean }[];
   workspaceFolders: string[];
@@ -55,10 +52,11 @@ interface GllmContext {
 
 interface DiffSession {
   uri: vscode.Uri;
-  socket: net.Socket;
+  // No socket stored — openDiff is fire-and-forget; events flow via the subscriber pipe.
 }
 
 let activeSession: DiffSession | null = null;
+let subscribers: net.Socket[] = [];
 
 // --------------------------------------------------------------------------
 // Constants
@@ -69,7 +67,7 @@ const SOCKET_PATH =
     ? '\\\\.\\pipe\\gllm-companion'
     : path.join(os.tmpdir(), 'gllm-companion.sock');
 
-const CTX_ACTIVE_DIFF = 'gllm.activeDiff';
+const CTX_ACTIVE_DIFF = 'gllm-companion.activeDiff';
 
 // --------------------------------------------------------------------------
 // Globals
@@ -160,9 +158,7 @@ export function activate(context: vscode.ExtensionContext) {
 
       if (closedDiff) {
         outputChannel.appendLine('Diff tab closed manually — treating as discard.');
-        // Notify CLI, then dispose.
-        replyToSession({ action: Actions.DIFF_REJECTED, filePath: activeSession.uri.fsPath });
-        disposeSession();
+        broadcastToSubscribers({ action: Actions.DIFF_REJECTED, filePath: activeSession.uri.fsPath });        
       }
     })
   );
@@ -202,9 +198,8 @@ async function handleAccept() {
     }
   }
 
-  replyToSession({ action: Actions.DIFF_ACCEPTED, filePath: uri.fsPath });
+  broadcastToSubscribers({ action: Actions.DIFF_ACCEPTED, filePath: uri.fsPath });
   await closeDiffTabs(uri);
-  disposeSession();
   outputChannel.appendLine(`Diff accepted and saved: ${uri.fsPath}`);
 }
 
@@ -220,9 +215,8 @@ async function handleCancel() {
   await vscode.window.showTextDocument(uri, { preserveFocus: true, preview: true });
   await vscode.commands.executeCommand('workbench.action.files.revert');
 
-  replyToSession({ action: Actions.DIFF_REJECTED, filePath: uri.fsPath });
+  broadcastToSubscribers({ action: Actions.DIFF_REJECTED, filePath: uri.fsPath });
   await closeDiffTabs(uri);
-  disposeSession();
   outputChannel.appendLine(`Diff cancelled — reverted: ${uri.fsPath}`);
 }
 
@@ -231,9 +225,13 @@ async function handleCancel() {
 // --------------------------------------------------------------------------
 
 async function handleMessage(msg: GllmMessage, socket: net.Socket) {
-  if (!msg) { return; }
+  if (!msg || !msg.action) {
+    outputChannel.appendLine('ERROR: Missing action field in message.');
+    socket.end();
+    return;
+  }
 
-  const action = msg.action ?? Actions.OPEN_DIFF;
+  const action = msg.action;
 
   // ---- Context request (synchronous query, no diff session needed) ----
   if (action === Actions.GET_CONTEXT) {
@@ -245,6 +243,21 @@ async function handleMessage(msg: GllmMessage, socket: net.Socket) {
       outputChannel.appendLine(`ERROR: Failed to gather context: ${err}`);
       socket.end();
     }
+    return;
+  }
+
+  // ---- Subscribe request (persistent connection for receiving events) ----
+  if (action === Actions.SUBSCRIBE) {
+    if (!subscribers.includes(socket)) {
+      subscribers.push(socket);
+    }
+    socket.on('close', () => {
+      subscribers = subscribers.filter((s) => s !== socket);
+    });
+    socket.on('error', () => {
+      subscribers = subscribers.filter((s) => s !== socket);
+    });
+    outputChannel.appendLine('CLI connected to subscriber pipe.');
     return;
   }
 
@@ -264,13 +277,13 @@ async function handleMessage(msg: GllmMessage, socket: net.Socket) {
 
     // If a prior session is still alive, clean it up first.
     if (activeSession) {
-      replyToSession({ action: Actions.DIFF_REJECTED, filePath: activeSession.uri.fsPath });
-      disposeSession();
+      const oldPath = activeSession.uri.fsPath;
+      broadcastToSubscribers({ action: Actions.DIFF_REJECTED, filePath: oldPath });
     }
 
     const uri = resolveFilePath(msg.filePath);
-    // Store the session — keep the socket open so we can reply once user decides.
-    activeSession = { uri, socket };
+    // Store the session — uri is used by Accept/Cancel handlers and tab-close guard.
+    activeSession = { uri };
 
     await showInlineDiff(uri, msg.newContent);
     // Trigger Accept/Cancel buttons and hotkey overrides.
@@ -283,10 +296,11 @@ async function handleMessage(msg: GllmMessage, socket: net.Socket) {
   // ---- CLI-driven saved/discard ----
   if (action === Actions.DIFF_ACCEPTED || action === Actions.DIFF_REJECTED) {
     const uri = resolveFilePath(msg.filePath);
+    // Clear session state FIRST to avoid triggering onDidChangeTabs
+    disposeSession();
     await vscode.window.showTextDocument(uri, { preserveFocus: true, preview: true });
     await vscode.commands.executeCommand('workbench.action.files.revert');
     await closeDiffTabs(uri);
-    disposeSession();
     socket.end();
     outputChannel.appendLine(`CLI action "${action}" executed for ${msg.filePath}`);
     return;
@@ -300,14 +314,22 @@ async function handleMessage(msg: GllmMessage, socket: net.Socket) {
 // Session helpers
 // --------------------------------------------------------------------------
 
-function replyToSession(payload: object) {
-  if (!activeSession) { return; }
-  try {
-    activeSession.socket.write(JSON.stringify(payload));
-    activeSession.socket.end();
-  } catch (err) {
-    outputChannel.appendLine(`ERROR: Failed to write to socket: ${err}`);
-  }
+function broadcastToSubscribers(payload: object) {
+  // Clear session state FIRST to avoid race conditions with CLI response
+  // If the session was active, it means we're transitioning to a new session or clearing state after an accept/reject.
+  disposeSession();
+  
+  if (!payload) { return; }
+  // No subscribers? Nothing to do.
+  if (subscribers.length === 0) { return; }
+  const data = JSON.stringify(payload);
+  subscribers.forEach((s) => {
+    try {
+      s.write(data);
+    } catch (err) {
+      outputChannel.appendLine(`ERROR: Failed to write to subscriber socket: ${err}`);
+    }
+  });
 }
 
 function disposeSession() {
@@ -414,10 +436,6 @@ function gatherContext(): GllmContext {
         line: activeTextEditor.selection.active.line,
         character: activeTextEditor.selection.active.character,
       },
-      visibleRanges: activeTextEditor.visibleRanges.map((r) => ({
-        start: { line: r.start.line, character: r.start.character },
-        end: { line: r.end.line, character: r.end.character },
-      })),
     };
   }
 

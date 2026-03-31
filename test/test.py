@@ -4,27 +4,29 @@ import os
 import tempfile
 import argparse
 
-def test_sock(action="discard", content=None):
+def test_sock(action="diffRejected", content=None):
     sock_path = os.path.join(tempfile.gettempdir(), 'gllm-companion.sock')
     print("Socket path:", sock_path)
     
-    file_path = os.path.abspath("test/test.js")
-    with open(file_path, "w") as f:
-        f.write("const outputChannel = vscode.window.createOutputChannel('gllm-companion');\\noutputChannel.appendLine('Socket server started at ' + SOCKET_PATH);\\n")
-    
     # Build message based on action type
-    if action == "preview":
+    if action == "openDiff":
+        file_path = os.path.abspath("test/test.js")
+        with open(file_path, "w") as f:
+            f.write("const outputChannel = vscode.window.createOutputChannel('gllm-companion');\\noutputChannel.appendLine('Socket server started at ' + SOCKET_PATH);\\n")
+        
         new_content = content if content else "console.log('Congratulations, your extension \"gllm-companion\" is now active!');"
-        msg = json.dumps({"action": "preview", "filePath": file_path, "newContent": new_content})
-    elif action == "saved":
-        msg = json.dumps({"action": "saved", "filePath": file_path})
-    elif action == "discard":
-        msg = json.dumps({"action": "discard", "filePath": file_path})
-    elif action == "context":
-        msg = json.dumps({"action": "context"})
+        msg = json.dumps({"action": "openDiff", "filePath": file_path, "newContent": new_content})
+    elif action == "diffAccepted":
+        file_path = os.path.abspath("test/test.js")
+        msg = json.dumps({"action": "diffAccepted", "filePath": file_path})
+    elif action == "diffRejected":
+        file_path = os.path.abspath("test/test.js")
+        msg = json.dumps({"action": "diffRejected", "filePath": file_path})
+    elif action == "getContext":
+        msg = json.dumps({"action": "getContext"})
     else:
         print(f"Unknown action: {action}")
-        print("Valid actions: preview, saved, discard, context")
+        print("Valid actions: openDiff, diffAccepted, diffRejected, getContext")
         return
     
     print(f"Action: {action}")
@@ -36,7 +38,7 @@ def test_sock(action="discard", content=None):
             s.sendall(msg.encode('utf-8'))
             print("Sent successfully")
             
-            if action == "context":
+            if action == "getContext":
                 print("Waiting for response...")
                 s.shutdown(socket.SHUT_WR)
                 
@@ -47,7 +49,7 @@ def test_sock(action="discard", content=None):
                         break
                     response += data
                 
-                print("\\n--- Response Received ---")
+                print("\n--- Response Received ---")
                 try:
                     parsed = json.loads(response.decode('utf-8'))
                     print(json.dumps(parsed, indent=2))
@@ -63,28 +65,28 @@ if __name__ == "__main__":
         usage="""%(prog)s <action> [options]
 
 Actions:
-  preview    Send preview action with optional content
-  saved      Send saved action
-  discard    Send discard action
-  context    Request active editor contextual awareness
+  openDiff   Send openDiff action with optional content
+  diffAccepted  Send diffAccepted action
+  diffRejected  Send diffRejected action
+  getContext    Request active editor contextual awareness
 
 Examples:
-  %(prog)s preview                    # Preview with default content
-  %(prog)s preview -c "console.log('test')"  # Preview with custom content
-  %(prog)s saved                      # Send saved action
-  %(prog)s discard                    # Send discard action
-  %(prog)s context                    # Request context payload"""
+  %(prog)s openDiff                   # Preview with default content
+  %(prog)s openDiff -c "console.log('test')"  # Preview with custom content
+  %(prog)s diffAccepted               # Send diffAccepted action
+  %(prog)s diffRejected               # Send diffRejected action
+  %(prog)s getContext                 # Request context payload"""
     )
     parser.add_argument(
         "action",
         nargs="?",
-        choices=["preview", "saved", "discard", "context"],
+        choices=["openDiff", "diffAccepted", "diffRejected", "getContext"],
         help="Action type to test"
     )
     parser.add_argument(
         "-c", "--content",
         default=None,
-        help="Content for preview action (optional)"
+        help="Content for openDiff action (optional)"
     )
     
     args = parser.parse_args()
