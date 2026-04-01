@@ -52,6 +52,7 @@ interface GllmContext {
 
 interface DiffSession {
   uri: vscode.Uri;
+  isNewFile: boolean;
   // No socket stored — openDiff is fire-and-forget; events flow via the subscriber pipe.
 }
 
@@ -158,6 +159,9 @@ export function activate(context: vscode.ExtensionContext) {
 
       if (closedDiff) {
         outputChannel.appendLine('Diff tab closed manually — treating as discard.');
+        if (activeSession.isNewFile) {
+          deleteFileIfExists(activeSession.uri.fsPath);
+        }
         broadcastToSubscribers({ action: Actions.DIFF_REJECTED, filePath: activeSession.uri.fsPath });        
       }
     })
@@ -209,11 +213,15 @@ async function handleCancel() {
     return;
   }
 
-  const { uri } = activeSession;
+  const { uri, isNewFile } = activeSession;
 
   // Revert the buffer to match the on-disk state (undo the applyEdit).
   await vscode.window.showTextDocument(uri, { preserveFocus: true, preview: true });
   await vscode.commands.executeCommand('workbench.action.files.revert');
+
+  if (isNewFile) {
+    deleteFileIfExists(uri.fsPath);
+  }
 
   broadcastToSubscribers({ action: Actions.DIFF_REJECTED, filePath: uri.fsPath });
   await closeDiffTabs(uri);
@@ -282,8 +290,9 @@ async function handleMessage(msg: GllmMessage, socket: net.Socket) {
     }
 
     const uri = resolveFilePath(msg.filePath);
+    const isNewFile = !fs.existsSync(uri.fsPath);
     // Store the session — uri is used by Accept/Cancel handlers and tab-close guard.
-    activeSession = { uri };
+    activeSession = { uri, isNewFile };
 
     await showInlineDiff(uri, msg.newContent);
     // Trigger Accept/Cancel buttons and hotkey overrides.
@@ -296,10 +305,17 @@ async function handleMessage(msg: GllmMessage, socket: net.Socket) {
   // ---- CLI-driven saved/discard ----
   if (action === Actions.DIFF_ACCEPTED || action === Actions.DIFF_REJECTED) {
     const uri = resolveFilePath(msg.filePath);
+    const isNew = activeSession?.isNewFile && activeSession?.uri.fsPath === uri.fsPath;
+
     // Clear session state FIRST to avoid triggering onDidChangeTabs
     disposeSession();
     await vscode.window.showTextDocument(uri, { preserveFocus: true, preview: true });
     await vscode.commands.executeCommand('workbench.action.files.revert');
+
+    if (action === Actions.DIFF_REJECTED && isNew) {
+      deleteFileIfExists(uri.fsPath);
+    }
+
     await closeDiffTabs(uri);
     socket.end();
     outputChannel.appendLine(`CLI action "${action}" executed for ${msg.filePath}`);
@@ -345,6 +361,13 @@ function disposeSession() {
 async function showInlineDiff(uri: vscode.Uri, newContent: string) {
   try {
     const activeTerminal = vscode.window.activeTerminal;
+
+    // Ensure directory and empty file exist for new files
+    if (activeSession?.isNewFile) {
+      fs.mkdirSync(path.dirname(uri.fsPath), { recursive: true });
+      fs.writeFileSync(uri.fsPath, '');
+    }
+
     const doc = await vscode.workspace.openTextDocument(uri);
 
     const edit = new vscode.WorkspaceEdit();
@@ -444,6 +467,18 @@ function gatherContext(): GllmContext {
     otherOpenFiles: openFiles,
     workspaceFolders: (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath),
   };
+}
+
+function deleteFileIfExists(filePath: string) {
+  try {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (err) {
+    if (outputChannel) {
+      outputChannel.appendLine(`WARN: Failed to remove file ${filePath}: ${err}`);
+    }
+  }
 }
 
 function startGllmSession() {
