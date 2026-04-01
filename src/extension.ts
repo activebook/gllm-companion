@@ -56,8 +56,21 @@ interface DiffSession {
   // No socket stored — openDiff is fire-and-forget; events flow via the subscriber pipe.
 }
 
-let activeSession: DiffSession | null = null;
+const activeSessions = new Map<string, DiffSession>();
 let subscribers: net.Socket[] = [];
+
+function getActiveSession(): DiffSession | undefined {
+  const tab = vscode.window.tabGroups.activeTabGroup?.activeTab;
+  if (tab?.input instanceof vscode.TabInputTextDiff) {
+    const fsPath = tab.input.modified.fsPath;
+    return activeSessions.get(fsPath);
+  }
+  return undefined;
+}
+
+function updateContext() {
+  vscode.commands.executeCommand('setContext', CTX_ACTIVE_DIFF, activeSessions.size > 0);
+}
 
 // --------------------------------------------------------------------------
 // Constants
@@ -147,22 +160,32 @@ export function activate(context: vscode.ExtensionContext) {
   // ---- Defensive cleanup: detect manual tab closure ----
   context.subscriptions.push(
     vscode.window.tabGroups.onDidChangeTabs((event) => {
-      if (!activeSession) { return; }
+      if (activeSessions.size === 0) { return; }
 
-      const closedDiff = event.closed.some((tab) => {
-        if (!(tab.input instanceof vscode.TabInputTextDiff)) { return false; }
-        return (
-          tab.input.original.fsPath === activeSession!.uri.fsPath ||
-          tab.input.modified.fsPath === activeSession!.uri.fsPath
-        );
-      });
+      const closedPaths = new Set<string>();
 
-      if (closedDiff) {
-        outputChannel.appendLine('Diff tab closed manually — treating as discard.');
-        if (activeSession.isNewFile) {
-          deleteFileIfExists(activeSession.uri.fsPath);
+      for (const tab of event.closed) {
+        if (tab.input instanceof vscode.TabInputTextDiff) {
+          closedPaths.add(tab.input.modified.fsPath);
+          closedPaths.add(tab.input.original.fsPath);
         }
-        broadcastToSubscribers({ action: Actions.DIFF_REJECTED, filePath: activeSession.uri.fsPath });        
+      }
+
+      let sessionsRemoved = false;
+      for (const [fsPath, session] of activeSessions.entries()) {
+        if (closedPaths.has(fsPath)) {
+          outputChannel.appendLine(`Diff tab closed manually for ${fsPath} — treating as discard.`);
+          if (session.isNewFile) {
+            deleteFileIfExists(fsPath);
+          }
+          broadcastToSubscribers({ action: Actions.DIFF_REJECTED, filePath: fsPath });
+          activeSessions.delete(fsPath);
+          sessionsRemoved = true;
+        }
+      }
+
+      if (sessionsRemoved) {
+        updateContext();
       }
     })
   );
@@ -170,7 +193,8 @@ export function activate(context: vscode.ExtensionContext) {
   // ---- Disposal ----
   context.subscriptions.push({
     dispose: () => {
-      disposeSession();
+      activeSessions.clear();
+      updateContext();
       server.close();
       statusBarItem.dispose();
       if (os.platform() !== 'win32' && fs.existsSync(SOCKET_PATH)) {
@@ -185,12 +209,13 @@ export function activate(context: vscode.ExtensionContext) {
 // --------------------------------------------------------------------------
 
 async function handleAccept() {
-  if (!activeSession) {
-    outputChannel.appendLine('WARN: diff.accept fired with no active session.');
+  const session = getActiveSession();
+  if (!session) {
+    outputChannel.appendLine('WARN: diff.accept fired but no active gllm diff session matches the current tab.');
     return;
   }
 
-  const { uri } = activeSession;
+  const { uri } = session;
 
   // Save the buffer to disk.
   const doc = vscode.workspace.textDocuments.find((d) => d.uri.fsPath === uri.fsPath);
@@ -203,17 +228,20 @@ async function handleAccept() {
   }
 
   broadcastToSubscribers({ action: Actions.DIFF_ACCEPTED, filePath: uri.fsPath });
+  activeSessions.delete(uri.fsPath);
+  updateContext();
   await closeDiffTabs(uri);
   outputChannel.appendLine(`Diff accepted and saved: ${uri.fsPath}`);
 }
 
 async function handleCancel() {
-  if (!activeSession) {
-    outputChannel.appendLine('WARN: diff.cancel fired with no active session.');
+  const session = getActiveSession();
+  if (!session) {
+    outputChannel.appendLine('WARN: diff.cancel fired but no active gllm diff session matches the current tab.');
     return;
   }
 
-  const { uri, isNewFile } = activeSession;
+  const { uri, isNewFile } = session;
 
   // Revert the buffer to match the on-disk state (undo the applyEdit).
   await vscode.window.showTextDocument(uri, { preserveFocus: true, preview: true });
@@ -224,6 +252,8 @@ async function handleCancel() {
   }
 
   broadcastToSubscribers({ action: Actions.DIFF_REJECTED, filePath: uri.fsPath });
+  activeSessions.delete(uri.fsPath);
+  updateContext();
   await closeDiffTabs(uri);
   outputChannel.appendLine(`Diff cancelled — reverted: ${uri.fsPath}`);
 }
@@ -283,20 +313,18 @@ async function handleMessage(msg: GllmMessage, socket: net.Socket) {
       return;
     }
 
-    // If a prior session is still alive, clean it up first.
-    if (activeSession) {
-      const oldPath = activeSession.uri.fsPath;
-      broadcastToSubscribers({ action: Actions.DIFF_REJECTED, filePath: oldPath });
+    const uri = resolveFilePath(msg.filePath);
+
+    // Extinguish preceding session for this precise file path if one lingeringly exists.
+    if (activeSessions.has(uri.fsPath)) {
+      broadcastToSubscribers({ action: Actions.DIFF_REJECTED, filePath: uri.fsPath });
     }
 
-    const uri = resolveFilePath(msg.filePath);
     const isNewFile = !fs.existsSync(uri.fsPath);
-    // Store the session — uri is used by Accept/Cancel handlers and tab-close guard.
-    activeSession = { uri, isNewFile };
+    activeSessions.set(uri.fsPath, { uri, isNewFile });
 
     await showInlineDiff(uri, msg.newContent);
-    // Trigger Accept/Cancel buttons and hotkey overrides.
-    await vscode.commands.executeCommand('setContext', CTX_ACTIVE_DIFF, true);
+    updateContext();
 
     outputChannel.appendLine(`Diff preview opened: ${msg.filePath}`);
     return;
@@ -305,18 +333,24 @@ async function handleMessage(msg: GllmMessage, socket: net.Socket) {
   // ---- CLI-driven saved/discard ----
   if (action === Actions.DIFF_ACCEPTED || action === Actions.DIFF_REJECTED) {
     const uri = resolveFilePath(msg.filePath);
-    const isNew = activeSession?.isNewFile && activeSession?.uri.fsPath === uri.fsPath;
+    const session = activeSessions.get(uri.fsPath);
 
-    // Clear session state FIRST to avoid triggering onDidChangeTabs
-    disposeSession();
-    await vscode.window.showTextDocument(uri, { preserveFocus: true, preview: true });
-    await vscode.commands.executeCommand('workbench.action.files.revert');
+    if (session) {
+      const isNew = session.isNewFile;
 
-    if (action === Actions.DIFF_REJECTED && isNew) {
-      deleteFileIfExists(uri.fsPath);
+      // Clear session state FIRST to avoid triggering onDidChangeTabs
+      activeSessions.delete(uri.fsPath);
+      updateContext();
+
+      await vscode.window.showTextDocument(uri, { preserveFocus: true, preview: true });
+      await vscode.commands.executeCommand('workbench.action.files.revert');
+
+      if (action === Actions.DIFF_REJECTED && isNew) {
+        deleteFileIfExists(uri.fsPath);
+      }
+
+      await closeDiffTabs(uri);
     }
-
-    await closeDiffTabs(uri);
     socket.end();
     outputChannel.appendLine(`CLI action "${action}" executed for ${msg.filePath}`);
     return;
@@ -331,10 +365,6 @@ async function handleMessage(msg: GllmMessage, socket: net.Socket) {
 // --------------------------------------------------------------------------
 
 function broadcastToSubscribers(payload: object) {
-  // Clear session state FIRST to avoid race conditions with CLI response
-  // If the session was active, it means we're transitioning to a new session or clearing state after an accept/reject.
-  disposeSession();
-  
   if (!payload) { return; }
   // No subscribers? Nothing to do.
   if (subscribers.length === 0) { return; }
@@ -348,12 +378,6 @@ function broadcastToSubscribers(payload: object) {
   });
 }
 
-function disposeSession() {
-  // Clear VSCode context so buttons/hotkeys disappear.
-  vscode.commands.executeCommand('setContext', CTX_ACTIVE_DIFF, false);
-  activeSession = null;
-}
-
 // --------------------------------------------------------------------------
 // UI helpers
 // --------------------------------------------------------------------------
@@ -363,7 +387,8 @@ async function showInlineDiff(uri: vscode.Uri, newContent: string) {
     const activeTerminal = vscode.window.activeTerminal;
 
     // Ensure directory and empty file exist for new files
-    if (activeSession?.isNewFile) {
+    const session = activeSessions.get(uri.fsPath);
+    if (session?.isNewFile) {
       fs.mkdirSync(path.dirname(uri.fsPath), { recursive: true });
       fs.writeFileSync(uri.fsPath, '');
     }
@@ -381,6 +406,7 @@ async function showInlineDiff(uri: vscode.Uri, newContent: string) {
     }
 
     await vscode.commands.executeCommand('workbench.files.action.compareWithSaved', uri);
+    await vscode.commands.executeCommand('workbench.action.keepEditor');
 
     if (activeTerminal) {
       activeTerminal.show(false);

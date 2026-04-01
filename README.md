@@ -58,6 +58,14 @@ Please report bugs and feature requests on the [GitHub issue tracker](https://gi
 
 ## Release Notes
 
+### 0.0.8
+
+Improvement & Bugfix:
+
+- Multi-tenancy support: enables multiple concurrent `gllm` diff sessions natively for agents operating across separate worktrees simultaneously.
+- IDE Preview-Tab Fix: pins newly instantiated diff views.
+- Null-File Fix: resolves the anomaly disabling context render when executing completely new file generations.
+
 ### 0.0.7
 
 Improvement:
