@@ -55,10 +55,16 @@ pack-major: ## Bump major version and package
 	npm version major
 	$(MAKE) package
 
-release: ## Create a GitHub release based on package.json version
+release: ## Create a GitHub release based on package.json version (Optional: CLOSE=1,2,3 to close issues)
 	@echo "\033[36mEnsuring tag v$(VERSION) exists locally...\033[0m"
 	git tag v$(VERSION) || true
 	@echo "\033[36mPushing tag v$(VERSION) to remote...\033[0m"
 	git push origin v$(VERSION)
 	@echo "\033[36mCreating GitHub release v$(VERSION)...\033[0m"
 	gh release create v$(VERSION) --generate-notes
+	@if [ -n "$(CLOSE)" ]; then \
+		for issue in $$(echo $(CLOSE) | tr ',' ' '); do \
+			echo "\033[36mClosing issue #$$issue...\033[0m"; \
+			gh issue close $$issue -c "Closed by release v$(VERSION)"; \
+		done; \
+	fi
